@@ -38,11 +38,14 @@ def pending_messages(client, channel, bot_user_id):
     oldest = str(time.time() - C.LOOKBACK_HOURS * 3600)
     msgs, cursor = [], None
     while True:
-        resp = client.conversations_history(channel=channel, oldest=oldest, limit=200, cursor=cursor)
+        # 마켓플레이스 미등록 앱은 슬랙 정책상 한 번에 15개까지만 조회 가능
+        resp = client.conversations_history(channel=channel, oldest=oldest, limit=15, cursor=cursor)
         msgs.extend(resp["messages"])
         cursor = (resp.get("response_metadata") or {}).get("next_cursor")
-        if not cursor:
+        if not cursor or not resp.get("has_more"):
             break
+        time.sleep(1)
+    print(f"[슬랙] 채널에서 받은 메시지 {len(msgs)}개")
     out = []
     for m in msgs:
         if m.get("subtype") or m.get("bot_id"):
