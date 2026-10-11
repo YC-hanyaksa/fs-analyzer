@@ -35,14 +35,22 @@ def parse_request(text):
 
 
 def pending_messages(client, channel, bot_user_id):
-    oldest = str(time.time() - C.LOOKBACK_HOURS * 3600)
-    msgs, cursor = [], None
-    while True:
+    # 실행 서버의 시계가 틀어져 있을 수 있어서, 기간 기준을 서버 시각이 아니라
+    # '슬랙의 가장 최근 메시지 시각'으로 잡습니다. (oldest 파라미터는 쓰지 않음)
+    msgs, cursor, cutoff = [], None, None
+    for _page in range(5):
         # 마켓플레이스 미등록 앱은 슬랙 정책상 한 번에 15개까지만 조회 가능
-        resp = client.conversations_history(channel=channel, oldest=oldest, limit=15, cursor=cursor)
-        msgs.extend(resp["messages"])
+        resp = client.conversations_history(channel=channel, limit=15, cursor=cursor)
+        page = resp["messages"]
+        if page and cutoff is None:
+            newest = float(page[0]["ts"])
+            cutoff = newest - C.LOOKBACK_HOURS * 3600
+            skew = time.time() - newest
+            if abs(skew) > 3600 * 24:
+                print(f"[알림] 실행 서버 시계가 슬랙과 {skew / 3600:+.1f}시간 차이 납니다(무시하고 진행)")
+        msgs.extend(m for m in page if float(m["ts"]) >= cutoff)
         cursor = (resp.get("response_metadata") or {}).get("next_cursor")
-        if not cursor or not resp.get("has_more"):
+        if not cursor or not resp.get("has_more") or (page and float(page[-1]["ts"]) < cutoff):
             break
         time.sleep(1)
     print(f"[슬랙] 채널에서 받은 메시지 {len(msgs)}개")
