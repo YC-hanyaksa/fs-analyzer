@@ -1,0 +1,29 @@
+name: 재무제표 분석 봇
+
+on:
+  schedule:
+    # UTC 기준. KST 07:00~23:59 사이 20분 간격
+    - cron: "*/20 22,23,0-14 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: fs-analyzer
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: 슬랙 요청 처리
+        run: python -m fs_analyzer.main
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
