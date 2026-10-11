@@ -15,14 +15,26 @@ from .slack_io import parse_request, pending_messages, react, reply, upload
 
 
 def main():
-    missing = [k for k in ("DART_API_KEY", "SLACK_BOT_TOKEN", "SLACK_CHANNEL_ID") if not os.environ.get(k)]
+    env = {k: (os.environ.get(k) or "").strip() for k in ("DART_API_KEY", "SLACK_BOT_TOKEN", "SLACK_CHANNEL_ID")}
+    missing = [k for k, v in env.items() if not v]
     if missing:
         sys.exit(f"환경변수 누락: {', '.join(missing)}")
-    channel = os.environ["SLACK_CHANNEL_ID"]
-    slack = WebClient(token=os.environ["SLACK_BOT_TOKEN"])
-    bot_id = slack.auth_test()["user_id"]
+    for k in env:
+        raw = os.environ[k]
+        if raw != env[k]:
+            print(f"[알림] {k} 값 앞뒤의 공백/줄바꿈 {len(raw) - len(env[k])}자를 제거했습니다")
+    channel = env["SLACK_CHANNEL_ID"]
+    slack = WebClient(token=env["SLACK_BOT_TOKEN"])
+    me = slack.auth_test()
+    bot_id = me["user_id"]
+    # 채널 ID는 비밀값이 아니지만 GitHub가 Secret 값을 *** 로 가리므로 글자 사이를 띄워 출력
+    print(f"[슬랙] 봇: {me.get('user')} ({bot_id}) / 워크스페이스: {me.get('team')}")
+    print(f"[슬랙] 채널 ID: {' '.join(channel)} ({len(channel)}자)")
 
     msgs = pending_messages(slack, channel, bot_id)
+    if not msgs:
+        r = slack.conversations_history(channel=channel, limit=5)
+        print(f"[진단] 기간 제한 없이 조회한 메시지: {len(r['messages'])}개")
     reqs = []
     for m in msgs:
         try:
@@ -39,7 +51,7 @@ def main():
         print(f"처리할 요청 없음 (최근 메시지 {len(msgs)}개 확인)")
         return
 
-    dart = DartClient(os.environ["DART_API_KEY"])
+    dart = DartClient(env["DART_API_KEY"])
     out_dir = tempfile.mkdtemp()
     for m, req in reqs:
         ts = m["ts"]
